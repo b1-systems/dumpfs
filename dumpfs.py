@@ -28,7 +28,7 @@ import ConfigParser
 
 import syslog
 
-syslog.openlog(ident="dumpfs", logoption=syslog.LOG_PID, facility=syslog.LOG_DAEMON)
+syslog.openlog("dumpfs", syslog.LOG_PID, syslog.LOG_DAEMON)
 
 
 def dirFromList(list):
