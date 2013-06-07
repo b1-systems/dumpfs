@@ -1,0 +1,115 @@
+Index: dumpfs.py
+===================================================================
+--- dumpfs.py	(revision 2)
++++ dumpfs.py	(working copy)
+@@ -5,7 +5,7 @@
+ FTP_HOST="localhost"
+ FTP_DATEFORMAT=r"%Y-%m-%d_%H:%M"
+ FTP_PATH="{hostname}/{date}"
+-
++TIMEOUT=30
+ 
+ 
+ import fuse
+@@ -25,6 +25,10 @@
+ import ftplib
+ import socket
+ import ConfigParser
++
++import syslog
++
++syslog.openlog(ident="dumpfs", logoption=syslog.LOG_PID, facility=syslog.LOG_DAEMON)
+ 
+ 
+ def dirFromList(list):
+@@ -170,14 +174,14 @@
+         self.buffer = TransferFile()
+         self.exception = False  # indicate strange errors, do noop then
+         self.writethread = None
+-        self.ftp = ft = ftplib.FTP()
++        self.ftp = ft = ftplib.FTP(timeout=TIMEOUT)
+         ft.set_debuglevel(1)
+         current_open_counter += 1
+         self.update_path()
+         
+         current_files[path] = self
+         print "NEW FILE class created", path, args, kw
+-        
++        syslog.syslog(syslog.LOG_INFO, "start dumping file: " + str(path))
+ 
+     def update_path(self):
+         global current_open_counter, current_path
+@@ -187,10 +191,11 @@
+     def _start_writethread(self):
+         print "WRITE THREAD SPAWNED"
+         try:
+-            self.ftp.connect(FTP_HOST) #, timeout=3)
++            self.ftp.connect(FTP_HOST, timeout=TIMEOUT)
+             self.ftp.login(FTP_USER, FTP_PASS)
+         except Exception, e:
+             print "Error logging into FTP"
++            syslog.syslog(syslog.LOG_ERR, "error logging into ftp: " + str(e))
+             self.exception = True
+             return
+         self.create_directory()
+@@ -199,6 +204,7 @@
+             self.ftp.close()
+         except Exception, e:
+             print "Exception in FTP Transfer" + str(e)
++            syslog.syslog(syslog.LOG_ERR, "error dumping file: " + str(e))
+             self.exception = True
+             
+         print "TRANSFER FINISHED"
+@@ -433,7 +439,7 @@
+     #return -errno.ENOSYS
+ 
+ def parse_config():
+-    global FTP_HOST, FTP_USER, FTP_PASS, FTP_DATEFORMAT, FTP_PATH
++    global FTP_HOST, FTP_USER, FTP_PASS, FTP_DATEFORMAT, FTP_PATH, TIMEOUT
+     cp = ConfigParser.ConfigParser()
+     files = ["/etc/dumpfs.conf", "dumpfs.conf"]
+     if "DUMPFS_CONFIG" in os.environ:
+@@ -450,11 +456,15 @@
+     FTP_PASS = cp.get("ftp", "password")
+     FTP_DATEFORMAT = cp.get("ftp", "dateformat")
+     FTP_PATH = cp.get("ftp", "path")
++    try:
++        TIMEOUT = cp.get("ftp", "timeout")
++    except (KeyError, ConfigParser.NoOptionError), e:
++        pass
+     
+     for i,d in cp.items("directories"):
+         subdirectories.append("/%s" %d)
+     
+-    
++    syslog.syslog(syslog.LOG_NOTICE, "dumpfs started with target: %s@%s" %(FTP_USER, FTP_HOST))
+ 
+ if __name__ == "__main__":
+     fuse.fuse_python_api = (0, 2)
+@@ -482,5 +492,9 @@
+     print nargs
+     fs.parse(nargs, errex=1)
+     fs.multithreaded = 1
+-    fs.main()
+-
++    try:
++        fs.main()
++    except Exception, e:
++        print "error initializing fuse: %s" %e
++        syslog.syslog(syslog.LOG_ERR, "error initializing fuse: %s" %e)
++
+Index: dumpfs.spec
+===================================================================
+--- dumpfs.spec	(revision 2)
++++ dumpfs.spec	(working copy)
+@@ -12,8 +12,8 @@
+ # norootforbuild
+  
+ Name:       dumpfs
+-Version:    0.3.0
+-Release:    2
++Version:    0.3.1
++Release:    0
+ License:    GPLv2
+ Summary:    Write Only Filesystem for dumps on FTP servers
+ Group:      System

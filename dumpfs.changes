@@ -1,0 +1,22 @@
+-------------------------------------------------------------------
+Mon Mar 18 12:59:37 UTC 2013 - daniel.poelzleithner@sap.com
+
+- add syslog error reporting
+- add timeout for detecting connection problems
+
+-------------------------------------------------------------------
+Mon Jan 28 14:17:16 UTC 2013 - seife+b1bs@b1-systems.com
+
+- always load the fuse module on start
+
+-------------------------------------------------------------------
+Mon Jul 23 11:05:13 UTC 2012 - seife+b1bs@b1-systems.com
+
+- change date format in config file (remove ":")
+
+-------------------------------------------------------------------
+Wed Jul 18 13:45:52 UTC 2012 - seife+b1bs@b1-systems.com
+
+- add init script
+- specfile tweaks to avoid rpmlint warnings
+
