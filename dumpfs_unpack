@@ -1,0 +1,32 @@
+#!/usr/bin/env python
+
+from libdumpfs import Unpacker
+import optparse
+import sys, os
+
+
+parser = optparse.OptionParser(usage="usage: %prog [options] DUMPFILE [DUMPFILE ...]")
+parser.add_option("-k", "--keep", dest="keep", action="store_true",
+                  help="don't delete file when extraction was successfull")
+
+(options, args) = parser.parse_args()
+
+print args
+if len(args) == 0:
+    parser.print_usage()
+    sys.exit(1)
+
+ee = 0
+unp = Unpacker()
+for f in args:
+    print "unpack: %s" %f
+    rv = unp.decode_file(f)
+    if rv:
+        print "OK"
+        if not options.keep:
+            os.unlink(f)
+    else:
+        print "unpack failed"
+        ee = 1
+
+sys.exit(ee)

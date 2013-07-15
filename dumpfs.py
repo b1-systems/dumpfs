@@ -27,8 +27,11 @@ import socket
 import ConfigParser
 
 import syslog
+import struct
 
 syslog.openlog("dumpfs", syslog.LOG_PID, syslog.LOG_DAEMON)
+
+from libdumpfs import *
 
 
 def dirFromList(list):
@@ -65,83 +68,11 @@ def format_path():
     
 print format_path()
       
-
-
+      
 current_files = {}
 current_path = None
 current_open_counter = 0
 subdirectories = ["/"]
-
-
-MAX_SIZE = 10 * 1024
-FAKE_SIZE = (512 * 1024 * 1024) # 2 TB
-
-
-class TransferFile(object):
-    """
-    To transfer the content of between the two threads without having a local
-    file, this TransferFile is used. It contains a list of buffers that will
-    be spilled out by read. Read is blocking until another thread puts in more
-    Data or closes the file.
-    """
-    def __init__(self):
-        self.buffers = []
-        self.eof = False
-        self.sem = threading.Semaphore(0)
-        self.overflow = threading.Semaphore(MAX_SIZE)
-    
-    def buffersize(self):
-        rv = 0
-        for b in self.buffers:
-            rv += len(b)
-        return rv
-    
-    
-    def read(self, length):
-        # pop n bytes
-        
-        if self.eof and len(self.buffers) == 0:
-            return
-
-        rv = None
-        while True:
-            self.sem.acquire()
-        
-            if not len(self.buffers): # EOF
-                break
-
-            b = self.buffers[0]
-            bl = min(length, len(b))
-            if bl == len(b): # we can use the complete buffer element
-                rv = b
-                self.buffers.pop(0)
-                self.overflow.release()
-                break
-            else: # we can only use a slice
-                rv = b[:bl]
-                self.buffers[0] = b[bl:] # put the rest into the buffer list
-                self.sem.release() # we didn't pop the buffer, so we have to increase the semaphore again
-                break
-            
-            if len(self.buffers) == 0 and len(rv) > 0:
-                break
-        return rv
-        
-    def write(self, buf):
-        # skip while in 
-        if self.eof:
-            return
-
-        self.buffers.append(buf)
-        self.sem.release()
-        self.overflow.acquire()
-        
-    
-    
-    def close(self):
-        self.eof = True
-        self.sem.release()
-        
 
 
 class DumpFileClass(object):
@@ -197,15 +128,22 @@ class DumpFileClass(object):
             print "Error logging into FTP"
             syslog.syslog(syslog.LOG_ERR, "error logging into ftp: " + str(e))
             self.exception = True
+            # clear buffer
+            self.buffer.close()
+            self.buffer.clear()
+            
             return
         self.create_directory()
         try:
-            self.ftp.storbinary("STOR %s" %self.path.split("/")[-1], self.buffer, blocksize=409600)
+            self.ftp.storbinary("STOR %s.dumpfs" %self.path.split("/")[-1], self.buffer, blocksize=409600)
             self.ftp.close()
         except Exception, e:
             print "Exception in FTP Transfer" + str(e)
             syslog.syslog(syslog.LOG_ERR, "error dumping file: " + str(e))
             self.exception = True
+            self.buffer.close()
+            self.buffer.clear()
+            
             
         print "TRANSFER FINISHED"
 
@@ -219,9 +157,12 @@ class DumpFileClass(object):
             self.ftp.cwd(c)
       
         
-    def write(self, buf, *args, **kw):
+    def write(self, buf, offset):
         if self.exception:
-            return 0
+            return -errno.EREMOTEIO
+        
+        if offset != self.length:
+            syslog.syslog(syslog.LOG_ERR, "error got seek request on: %s" %str(self.path))
         
         self.length += len(buf)
         self.buffer.write(buf)
@@ -255,7 +196,7 @@ class DumpFileClass(object):
         self.length = 0
         # FIXME: what to do on truncate ?
 
-        
+       
         
 class DumpFS(Fuse):
     """
