@@ -161,11 +161,11 @@ class DumpFileClass(object):
         if self.exception:
             return -errno.EREMOTEIO
         
-        if offset != self.length:
-            syslog.syslog(syslog.LOG_ERR, "error got seek request on: %s" %str(self.path))
+        #if offset != self.length:
+        #    syslog.syslog(syslog.LOG_ERR, "error got seek request on: %s" %str(self.path))
         
-        self.length += len(buf)
-        self.buffer.write(buf)
+        #self.length += len(buf)
+        self.buffer.write(buf, offset)
         
         if not self.writethread:
             print "STARTTHREAD"
@@ -188,7 +188,7 @@ class DumpFileClass(object):
 
     def ftruncate(self, *args, **kw):
         print "ftruncate", args, kw
-        self.length = 0
+        #self.length = 0
         # FIXME: what to do on truncate ?
 
     def truncate(self, *args, **kw):
